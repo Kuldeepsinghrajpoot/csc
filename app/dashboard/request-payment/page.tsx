@@ -39,7 +39,7 @@ export default function App() {
 
         try {
     
-            const response = await fetch('http://localhost:3000/api/phonepe', {
+            const response = await fetch('https://pradeepcsc.vercel.app/api/phonepe', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ ...newTx})
