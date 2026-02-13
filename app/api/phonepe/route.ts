@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchPhonePeToken } from "../phone-pay-token/route";
+import { fetchPhonePeToken } from "../phone-pay-token/fetchPhonePeToken";
 import { db } from "@/app/lib/firebaseAdmin";
 export async function POST(req: Request) {
     try {

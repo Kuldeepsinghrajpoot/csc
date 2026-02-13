@@ -1,7 +1,7 @@
 // app/api/transactions/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/app/lib/firebaseAdmin";
-import { fetchPhonePeToken } from "../phone-pay-token/route"; 
+import { fetchPhonePeToken } from "../phone-pay-token/fetchPhonePeToken"; 
 
 export async function GET() {
     try {
