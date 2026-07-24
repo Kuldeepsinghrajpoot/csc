@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchPhonePeToken } from "../phone-pay-token/fetchPhonePeToken";
 import { db } from "@/app/lib/firebaseAdmin";
+import next from "next";
 export async function POST(req: Request) {
     try {
         const { amount } = await req.json();
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
                         type: "PG_CHECKOUT",
                         message: "Payment message used for collect requests",
                         merchantUrls: {
-                            redirectUrl: "http://localhost:3000/",
+                            redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL}`,
                         },
                         disablePaymentRetry: true,
                         paymentModeConfig: {
@@ -76,9 +77,11 @@ export async function POST(req: Request) {
           amount, orderId: data.orderId, status: "PENDING", expireAt: Date.now() + 1200 * 1000, redirectUrl: data.redirectUrl,
            });
 
-        if (data.success) {
+        if (data.state === "PENDING") {
+            return NextResponse.json({ store, message: "PENDING" }, { status: 200 });
+        }else{
+            return NextResponse.json({ error: "Failed to initiate payment" }, { status: 500 });
         }
-        return NextResponse.json({ store });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

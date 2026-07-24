@@ -1,16 +1,12 @@
+"use client";
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
-export const runtime = "nodejs";
 
-// export const firebaseConfig = {
-//   apiKey: "AIzaSyC9n8sXo1l7j3mLh0a2b3c4d5e6f7g8h9i",
-//   authDomain: "pradeepcsc-ec8b0.firebaseapp.com",
-//   databaseURL: "https://pradeepcsc-ec8b0-default-rtdb.firebaseio.com",
-//   projectId: "pradeepcsc-ec8b0",
-//   storageBucket: "pradeepcsc-ec8b0.appspot.com",
-//   messagingSenderId: "408159523483",
-//   appId: "1:408159523483:web:07d9f7723bac391ef86c3e"
-// };
+// Initialize Firebase only in the browser to avoid server-side hydration
+// problems (reCAPTCHA / widgetId access to `document`/`window`).
+// If this module is imported on the server, `rtdb` will be null.
+
+export const runtime = "nodejs";
 
 export const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY!,
@@ -20,7 +16,21 @@ export const firebaseConfig = {
   storageBucket: process.env.FIREBASE_STORAGE_BUCKET!,
   messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID!,
   appId: process.env.FIREBASE_APP_ID!,
+};
+
+let _rtdb: ReturnType<typeof getDatabase> | null = null;
+
+if (typeof window !== "undefined") {
+  try {
+    const app = initializeApp(firebaseConfig);
+    _rtdb = getDatabase(app);
+  } catch (e) {
+    // Swallow init errors on server/build or when env is missing; keep _rtdb null
+    // so imports don't throw during SSR.
+    // eslint-disable-next-line no-console
+    console.warn("Firebase client initialization skipped:", e);
+    _rtdb = null;
+  }
 }
 
-const app = initializeApp(firebaseConfig);
-export const rtdb = getDatabase(app);
+export const rtdb = _rtdb;
