@@ -16,7 +16,7 @@ import {
 
 import { navLinks } from "../nav";
 
-export function MobileNavBar() {
+export default function MobileNavBar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
