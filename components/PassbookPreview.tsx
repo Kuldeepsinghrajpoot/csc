@@ -18,81 +18,26 @@ export default function PassbookPreview({
         if (!passbookRef.current) return;
 
         try {
+            // html2canvas-pro is a drop-in replacement for html2canvas that natively
+            // understands the modern CSS color functions (oklch, oklab, lab, lch,
+            // color-mix, color()) that Tailwind v4 emits by default. The original
+            // html2canvas library re-parses the page's actual stylesheets (not just
+            // inline styles) and throws "Attempting to parse an unsupported color
+            // function" as soon as it hits one of those — no amount of per-element
+            // inline-style patching can work around that, since the unsupported
+            // values live in the global :root CSS variables, not just the cloned node.
             const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-                import("html2canvas"),
+                import("html2canvas-pro"),
                 import("jspdf"),
             ]);
 
-            // jsPDF cannot parse modern CSS color functions (lab, oklch, color-mix, etc.)
-            // that Tailwind v4 and modern browsers emit as computed styles.
-            // Fix: walk every element in the subtree and replace any unsupported color
-            // value with a plain hex fallback BEFORE html2canvas reads the styles.
-            const UNSUPPORTED_COLOR = /\b(lab|oklab|oklch|lch|color-mix|color)\s*\(/i;
-
-            const fixColors = (el: HTMLElement) => {
-                const style = el.style;
-                const computed = window.getComputedStyle(el);
-
-                const props = [
-                    "color",
-                    "backgroundColor",
-                    "borderColor",
-                    "borderTopColor",
-                    "borderRightColor",
-                    "borderBottomColor",
-                    "borderLeftColor",
-                    "outlineColor",
-                    "textDecorationColor",
-                ] as const;
-
-                props.forEach((prop) => {
-                    const computedVal = computed[prop];
-                    if (computedVal && UNSUPPORTED_COLOR.test(computedVal)) {
-                        // Convert the modern color to a canvas pixel value (the browser
-                        // already knows how to render it — we just need a hex string).
-                        try {
-                            const tmp = document.createElement("div");
-                            tmp.style.position = "absolute";
-                            tmp.style.opacity = "0";
-                            tmp.style.pointerEvents = "none";
-                            tmp.style[prop] = computedVal;
-                            document.body.appendChild(tmp);
-                            const resolved = window.getComputedStyle(tmp)[prop];
-                            document.body.removeChild(tmp);
-                            // resolved is now rgb(...) which jsPDF handles fine
-                            style[prop] = resolved;
-                        } catch {
-                            style[prop] = prop.toLowerCase().includes("background")
-                                ? "#ffffff"
-                                : "#000000";
-                        }
-                    }
-                });
-
-                Array.from(el.children).forEach((child) => {
-                    if (child instanceof HTMLElement) fixColors(child);
-                });
-            };
-
-            // Clone the node so we don't mutate the live UI
-            const clone = passbookRef.current.cloneNode(true) as HTMLElement;
-            clone.style.position = "absolute";
-            clone.style.top = "-9999px";
-            clone.style.left = "-9999px";
-            clone.style.width = passbookRef.current.offsetWidth + "px";
-            document.body.appendChild(clone);
-
-            fixColors(clone);
-
-            const canvas = await html2canvas(clone, {
+            const canvas = await html2canvas(passbookRef.current, {
                 scale: 2,
                 useCORS: true,
                 allowTaint: false,
                 logging: false,
                 backgroundColor: "#ffffff",
             });
-
-            document.body.removeChild(clone);
 
             const imgData = canvas.toDataURL("image/jpeg", 0.98);
 
@@ -145,11 +90,28 @@ export default function PassbookPreview({
                     >
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="rounded-sm bg-white p-3 text-slate-900">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-sm bg-white p-2 text-slate-900">
+                                    {bank.logo ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                            src={bank.logo}
+                                            alt={`${bank.name} logo`}
+                                            crossOrigin="anonymous"
+                                            className="max-h-full max-w-full object-contain"
+                                            onError={(e) => {
+                                                // Fallback to a generic bank icon if the
+                                                // remote logo fails to load (e.g. blocked,
+                                                // offline, or CORS-restricted).
+                                                const target = e.currentTarget;
+                                                target.style.display = "none";
+                                                target.nextElementSibling?.classList.remove("hidden");
+                                            }}
+                                        />
+                                    ) : null}
                                     <svg
                                         viewBox="0 0 24 24"
                                         fill="currentColor"
-                                        className="h-6 w-6"
+                                        className={`h-6 w-6 ${bank.logo ? "hidden" : ""}`}
                                     >
                                         <path d="M4 6h16v2H4V6zm2 4h12v2H6v-2zm-2 4h16v2H4v-2zm2 4h12v2H6v-2z" />
                                     </svg>

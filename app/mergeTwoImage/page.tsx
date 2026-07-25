@@ -368,8 +368,8 @@ export default function MergeTwoImage() {
                 Math.round(cropMaxY / scale),
             );
 
-            let cropW = originalMaxX - originalMinX;
-            let cropH = originalMaxY - originalMinY;
+            const cropW = originalMaxX - originalMinX;
+            const cropH = originalMaxY - originalMinY;
 
             const cropCanvas = document.createElement("canvas");
             cropCanvas.width = cropW;
