@@ -56,8 +56,6 @@ export default function App() {
         }
     };
 
-
-
     if (view === 'success') {
         return (
             <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in duration-300">

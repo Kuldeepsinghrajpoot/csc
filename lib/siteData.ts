@@ -3,8 +3,8 @@ export const centerInfo = {
   centerName: "Pradeep CSC & Digital Seva Kendra",
   cscId: "CSC-ID-XXXX-XXXX",
   location: "Main Market, Dharampura, Madhya Pradesh",
-  phone: "+91 98765 43210",
-  email: "pradeep.csc@example.com",
+  phone: "+91 9584805472",
+  email: "pradeepsinghrajpoot4@zohomail.in",
   workingHours: "Mon - Sat: 09:00 AM - 07:00 PM",
   sunday: "Closed",
   upiId: "pradeep@upi"
@@ -59,20 +59,6 @@ export const services = [
   }
 ];
 
-// export const upPortals = [
-//   { name: "e-District UP", url: "https://edistrict.up.gov.in", desc: "Caste, Income, Domicile Certs" },
-//   { name: "Bhulekh UP", url: "https://upbhulekh.gov.in", desc: "Land Records (Khatauni)" },
-//   { name: "Jansunwai (IGRS)", url: "https://jansunwai.up.nic.in", desc: "Register Grievance/Complaint" },
-//   { name: "UPPCL Electricity", url: "https://www.upenergy.in", desc: "Bill Pay & New Connection" },
-//   { name: "Ration Card UP", url: "https://fcs.up.gov.in", desc: "Ration Card List & Status" },
-//   { name: "Manav Sampada", url: "http://ehrms.upsdc.gov.in", desc: "Govt Employee Service Book" },
-//   { name: "UP Agriculture", url: "http://upagriculture.com", desc: "Farmer Registration & PM Kisan" },
-//   { name: "Bhu Naksha", url: "http://upbhunaksha.gov.in", desc: "View Land Maps Online" },
-//   { name: "Voter Service", url: "https://voters.eci.gov.in", desc: "Voter ID Apply & Download" },
-//   { name: "Labour Card", url: "https://uplabour.gov.in", desc: "Labour Registration & Schemes" },
-//   { name: "UP Scholarship", url: "https://scholarship.up.gov.in", desc: "Student Scholarship Status" },
-//   { name: "Parivahan UP", url: "https://parivahan.gov.in", desc: "Driving License & Vehicle Reg" },
-// ];
 
 export const upPortals = [
   { name: "e-District UP", url: "https://edistrict.up.gov.in", desc: "Caste, Income, Domicile Certs" },

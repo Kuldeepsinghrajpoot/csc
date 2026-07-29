@@ -16,6 +16,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@tabler/icons-react": "^3.36.1",
     "@tanstack/react-table": "^8.21.3",
+    "@techstark/opencv-js": "5.0.0-release.1",
     "antd": "^6.4.5",
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchPhonePeToken } from "../phone-pay-token/fetchPhonePeToken";
 import { db } from "@/app/lib/firebaseAdmin";
-import next from "next";
 export async function POST(req: Request) {
     try {
         const { amount } = await req.json();

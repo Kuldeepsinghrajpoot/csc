@@ -18,7 +18,6 @@ export async function GET() {
             .map((key) => ({ firebaseId: key, ...data[key] }))
             .filter((tx) => tx.status === "PENDING" || tx.state === "PENDING");
 
-        console.log("Pending count:", pendingTx.length);
 
         const results = await Promise.all(
             pendingTx.map(async (tx) => {
@@ -29,7 +28,7 @@ export async function GET() {
                             headers: {
                                 Authorization: `O-Bearer ${access_token}`,
                             },
-                        },
+                        }
                     );
 
                     const statusData = await res.json();
@@ -44,17 +43,29 @@ export async function GET() {
                         await db
                             .ref(`transactions/${tx.firebaseId}`)
                             .update(updates);
-                        return { ...tx, ...updates };
+
+                        return {
+                            ...tx,
+                            ...updates,
+                        };
                     }
 
                     return tx;
                 } catch {
                     return tx;
                 }
-            }),
+            })
         );
 
-        return NextResponse.json({ updated: results.length });
+        const pendingPayments = results.filter(
+            (tx: any) => tx.status === "PENDING"
+        );
+
+        return NextResponse.json({
+            success: true,
+            payments: pendingPayments,
+        });
+
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
