@@ -30,6 +30,7 @@ export default function ContactFormCard() {
 
   const onSubmit = async (data: ContactForm) => {
     setStatus("submitting");
+    
 
     try {
       const response = await fetch("/api/contact", {

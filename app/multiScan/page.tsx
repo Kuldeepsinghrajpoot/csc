@@ -38,9 +38,17 @@ const loadImg = (src: string) =>
     });
 
 const readFile = (file: File) =>
-    new Promise<string>((resolve) => {
+    new Promise<string>((resolve, reject) => {
         const r = new FileReader();
-        r.onloadend = () => resolve(r.result as string);
+        r.onload = () => {
+            if (typeof r.result !== "string") {
+                reject(new Error("Image file could not be read"));
+                return;
+            }
+            resolve(r.result);
+        };
+        r.onerror = () => reject(r.error ?? new Error("Image file could not be read"));
+        r.onabort = () => reject(new Error("Image file read was cancelled"));
         r.readAsDataURL(file);
     });
 
@@ -70,7 +78,12 @@ async function encodeToLimit(img: CanvasImageSource, iw: number, ih: number, max
         const h = Math.max(1, Math.round(ih * base));
         return { data: await encodeJpeg(img, w, h, 0.9), w, h, fits: true };
     }
-    let last = { data: new Uint8Array(), w: 1, h: 1, fits: false };
+    let last: { data: Uint8Array; w: number; h: number; fits: boolean } = {
+        data: new Uint8Array(),
+        w: 1,
+        h: 1,
+        fits: false,
+    };
     for (const s of [1, 0.8, 0.65, 0.5, 0.4, 0.3, 0.22]) {
         const w = Math.max(1, Math.round(iw * base * s));
         const h = Math.max(1, Math.round(ih * base * s));
@@ -102,6 +115,7 @@ export default function MultiScan() {
     const [dragIndex, setDragIndex] = useState<number | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const revision = useRef(0);
 
     useEffect(() => {
         document.title = "Scan Pages to PDF";
@@ -116,7 +130,10 @@ export default function MultiScan() {
         toastTimer.current = setTimeout(() => setToast(null), 3500);
     };
 
-    const changed = () => setResult(null);
+    const changed = () => {
+        revision.current++;
+        setResult(null);
+    };
 
     const addFiles = async (files: File[]) => {
         const images = files.filter((f) => f.type.startsWith("image/"));
@@ -124,15 +141,21 @@ export default function MultiScan() {
             notify("Please choose image files (JPG, PNG).", "error");
             return;
         }
-        const added: Page[] = [];
-        for (const f of images) {
-            const raw = await readFile(f);
-            const cur = autoCut ? ((await autoCutImage(raw)) ?? raw) : raw;
-            added.push({ id: uid(), name: f.name, original: raw, current: cur });
+        try {
+            const added: Page[] = [];
+            for (const f of images) {
+                const raw = await readFile(f);
+                const cur = autoCut ? ((await autoCutImage(raw)) ?? raw) : raw;
+                await loadImg(cur);
+                added.push({ id: uid(), name: f.name, original: raw, current: cur });
+            }
+            setPages((p) => [...p, ...added]);
+            changed();
+            notify(`${added.length} page${added.length > 1 ? "s" : ""} added.`);
+        } catch (error) {
+            console.error("Failed to add scanner images", error);
+            notify("Could not read one or more images. Please try different files.", "error");
         }
-        setPages((p) => [...p, ...added]);
-        changed();
-        notify(`${added.length} page${added.length > 1 ? "s" : ""} added.`);
     };
 
     const update = (id: string, patch: Partial<Page>) => {
@@ -176,6 +199,7 @@ export default function MultiScan() {
     // ---------------- build output ----------------
     const create = async () => {
         if (!pages.length) return;
+        const startingRevision = revision.current;
         setBusy(true);
         setResult(null);
         try {
@@ -267,6 +291,8 @@ export default function MultiScan() {
                 if (limit && !e.fits) note = `Could not get under ${maxKb} KB.`;
             }
 
+            if (revision.current !== startingRevision) return;
+
             const outFiles: OutFile[] = files.map((f) => ({
                 url: URL.createObjectURL(new Blob([f.data as BlobPart], { type: f.mime })),
                 filename: f.filename,
@@ -320,7 +346,7 @@ export default function MultiScan() {
     };
 
     return (
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,#f8fbff_0%,#f3f6fb_100%)] text-slate-900 selection:bg-blue-600 selection:text-white">
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,#f8fbff_0%,#f3f6fb_100%)] text-slate-900 selection:bg-blue-600 selection:text-white">
             {toast && (
                 <div role="status" className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-xl">
                     <span className={`h-2 w-2 rounded-full ${toast.type === "success" ? "bg-emerald-400" : "bg-rose-400"}`} />
@@ -343,7 +369,7 @@ export default function MultiScan() {
                             </p>
                         </div>
 
-                        <div className="grid min-w-[260px] grid-cols-3 gap-3">
+                        <div className="grid min-w-65 grid-cols-3 gap-3">
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                                 <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Pages</p>
                                 <p className="mt-2 text-2xl font-black text-slate-900">{pages.length || 0}</p>
@@ -391,7 +417,7 @@ export default function MultiScan() {
                                     tabIndex={0}
                                     onClick={() => inputRef.current?.click()}
                                     onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && inputRef.current?.click()}
-                                    className="group flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6 text-center outline-none transition duration-200 hover:border-blue-400 hover:bg-blue-50/70 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                                    className="group flex min-h-55 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-blue-200 bg-linear-to-br from-blue-50 via-white to-indigo-50 p-6 text-center outline-none transition duration-200 hover:border-blue-400 hover:bg-blue-50/70 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                                 >
                                     <span className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-white text-blue-600 shadow-lg shadow-blue-100 ring-1 ring-slate-200 transition group-hover:bg-blue-600 group-hover:text-white">
                                         <Upload className="h-5 w-5" />
@@ -416,7 +442,7 @@ export default function MultiScan() {
                                             }}
                                             className={`rounded-2xl bg-white p-2 ring-1 transition ${dragIndex === i ? "opacity-40 ring-blue-400" : "ring-slate-200 shadow-sm"}`}
                                         >
-                                            <div className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-xl bg-slate-100">
+                                            <div className="relative flex aspect-3/4 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
                                                 <img src={pg.current} alt={`Page ${i + 1}`} draggable={false} className="max-h-full max-w-full object-contain" />
                                                 <span className="absolute left-2 top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1.5 text-xs font-bold text-white">{i + 1}</span>
                                             </div>
@@ -448,7 +474,7 @@ export default function MultiScan() {
                                         <button
                                             type="button"
                                             onClick={() => inputRef.current?.click()}
-                                            className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500 transition hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-700"
+                                            className="flex aspect-3/4 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500 transition hover:border-blue-400 hover:bg-blue-50/50 hover:text-blue-700"
                                         >
                                             <Plus className="h-6 w-6" /> Add more
                                         </button>
@@ -558,7 +584,7 @@ export default function MultiScan() {
                                 type="button"
                                 disabled={!pages.length || busy}
                                 onClick={create}
-                                className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-blue-600/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
+                                className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-blue-600 to-indigo-600 px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-blue-600/20 transition hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
                             >
                                 {busy ? (
                                     <><RefreshCw className="h-5 w-5 animate-spin" /> Working...</>
