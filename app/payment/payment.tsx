@@ -27,34 +27,33 @@ export default function PendingPaymentDialog({ open, onOpenChange }: PendingPaym
   const [pending, setPending] = useState<any[]>([]);
 
  useEffect(() => {
-  const fetchPendingPayments = async () => {
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL}/api/get-payment-request`,
-        {
+    let cancelled = false;
+
+    const fetchPendingPayments = async () => {
+      try {
+        const res = await fetch("/api/get-payment-request", {
           method: "GET",
           cache: "no-store",
-        }
-      );
+        });
+        const data = await res.json();
 
-      const data = await res.json();
+        if (cancelled || !data.success) return;
 
-      if (!data.success) return;
+        setPending(data.payments);
+        onOpenChange(data.payments.length > 0);
+      } catch (err) {
+        console.error(err);
+      }
+    };
 
-      setPending(data.payments);
+    // Load once when the page opens. No polling, so the page stops re-rendering.
+    fetchPendingPayments();
 
-      onOpenChange(data.payments.length > 0);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  fetchPendingPayments();
-
-  const interval = setInterval(fetchPendingPayments, 10000);
-
-  return () => clearInterval(interval);
-}, [onOpenChange]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalAmount = useMemo(() => {
     return pending.reduce(

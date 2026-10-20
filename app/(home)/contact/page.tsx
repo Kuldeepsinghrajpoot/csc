@@ -53,16 +53,16 @@ export default function ContactFormCard() {
   };
 
   return (
-    <div className="w-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-sm p-12 text-center">
+    <div className="w-full bg-linear-to-r from-blue-500 to-blue-600 rounded-sm p-12 text-center">
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-12 text-center text-white">
+      <div className="bg-linear-to-r from-blue-500 to-blue-600 p-12 text-center text-white">
         <h2 className="text-4xl font-bold">Need Any Government Service?</h2>
         <div className="mt-8 text-5xl font-bold">Book a Service</div>
       </div>
 
       <div className="grid lg:grid-cols-2 md:grid-cols-1 sm:grid-cols-1 items-stretch md:px-24 lg:px-24 py-24">
         {/* ================= LEFT SIDE ================= */}
-        <div className="rounded-sm bg-gradient-to-br from-blue-700 via-blue-600 to-blue-900 p-10 text-white shadow-xl flex flex-col justify-between">
+        <div className="rounded-sm bg-linear-to-br from-blue-700 via-blue-600 to-blue-900 p-10 text-white shadow-xl flex flex-col justify-between">
           <div>
             <span className="inline-block rounded-full bg-white/20 px-4 py-2 text-sm font-semibold">
               Common Service Centre (CSC)
@@ -85,11 +85,11 @@ export default function ContactFormCard() {
               <p className="mt-2 text-lg leading-7">
                 CSC Digital Seva Centre
                 <br />
-                Main Market Road
+              Village Vijaypur
                 <br />
-                Your City, Your State
+                 Kulphar Mahoba Uttar Pradesh
                 <br />
-                PIN - 123456
+                PIN - 210426
               </p>
             </div>
 
@@ -98,7 +98,7 @@ export default function ContactFormCard() {
               <h3 className="text-sm uppercase tracking-widest text-blue-200">
                 Phone Number
               </h3>
-              <p className="mt-2 text-lg">+91 98765 43210</p>
+              <p className="mt-2 text-lg">+91 9584805472</p>
             </div>
 
             {/* WhatsApp */}
@@ -106,7 +106,7 @@ export default function ContactFormCard() {
               <h3 className="text-sm uppercase tracking-widest text-blue-200">
                 WhatsApp Support
               </h3>
-              <p className="mt-2 text-lg">+91 98765 43210</p>
+              <p className="mt-2 text-lg">+91 9584805472</p>
             </div>
 
             {/* Office Time */}
@@ -115,7 +115,7 @@ export default function ContactFormCard() {
                 Working Hours
               </h3>
               <p className="mt-2 text-lg leading-7">
-                Monday - Saturday
+                Monday - Sunday
                 <br />
                 9:00 AM - 6:00 PM
               </p>

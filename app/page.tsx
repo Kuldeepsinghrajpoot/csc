@@ -17,10 +17,10 @@ export default function Page() {
 
   return (
     <>
-      <PendingPaymentDialog
+      {/* <PendingPaymentDialog
         open={isPaymentOpen}
         onOpenChange={setIsPaymentOpen}
-      />
+      /> */}
 
       <HeroSection />
       <ServicesSection />

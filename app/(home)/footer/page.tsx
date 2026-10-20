@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import Link from "next/link";
+import Image from "next/image";
 const Footer = () => {
   const scrollTop = () => {
     window.scrollTo({
@@ -48,11 +49,13 @@ const Footer = () => {
 
             <div className="flex items-center gap-4">
 
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold">
-
-                CSC
-
-              </div>
+              <Image
+                src="/logo.png"
+                alt="Rajput Common Service Centre logo"
+                width={72}
+                height={72}
+                className="h-[72px] w-[72px] shrink-0 rounded-full bg-white"
+              />
 
               <div>
 

@@ -1,179 +1,169 @@
-
-import { ArrowRight, CheckCircle2 } from "lucide-react";
-
-const HeroSection = () => {
-  return (
-    <section
-      id="home"
-      className="relative min-h-screen flex items-center overflow-hidden"
-    >
-      {/* Background Image */}
-
-      <img
-        src="https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1800&q=80"
-        alt="CSC Digital Seva Center"
-        className="absolute inset-0 w-full h-full object-cover"
-      />
-
-      {/* Overlay */}
-
-      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-900/80 to-slate-900/60"></div>
-
-      {/* Hero Content */}
-
-      <div className="relative max-w-7xl mx-auto px-6 py-36">
-
-        <div className="max-w-5xl">
-
-          {/* Badge */}
-
-          <span className="inline-flex items-center gap-2 bg-blue-500/90 text-white px-6 py-3 rounded-full text-sm font-semibold shadow-lg">
-
-            <CheckCircle2 size={18} />
-
-            Government Authorized CSC Digital Seva Center
-
-          </span>
-
-          {/* Heading */}
-
-          <h1 className="mt-8 text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight text-white">
-
-            Empowering Every Citizen With
-
-            <span className="block mt-3 text-blue-500">
-
-              Secure & Reliable Digital Government Services
-
-            </span>
-
-          </h1>
-
-          {/* Description */}
-          <p className="mt-8 max-w-3xl text-lg md:text-xl leading-9 text-gray-200">
-
-            Your one-stop destination for government and digital services with
-            quick processing, secure transactions, and reliable customer support.
-
-          </p>
-
-          {/* Buttons */}
-
-          <div className="flex flex-wrap gap-5 mt-10">
-
-            <button className="bg-blue-500 hover:bg-blue-600 transition text-white px-8 py-4 rounded-xl font-semibold flex items-center gap-3">
-
-              Explore Services
-
-              <ArrowRight size={20} />
-
-            </button>
-
-            <button className="border-2 border-white hover:bg-white hover:text-slate-900 transition text-white px-8 py-4 rounded-xl font-semibold">
-
-              Book Appointment
-
-            </button>
-
-          </div>
-
-          {/* Features */}
-
-          {/* Right Side */}
-          <div className="relative">
-
-            <div
-              // src="/images/csc-office.jpg"
-              // alt="CSC Digital Seva Center"
-              className="h-[600px] w-full rounded-3xl object-cover shadow-2xl"
-            />
-
-            {/* Floating Card */}
-
-            <div className="absolute bottom-8 left-1/2 w-[90%] -translate-x-1/2 rounded-3xl border border-white/20 bg-white/10 p-6 backdrop-blur-xl shadow-2xl">
-
-              <div className="grid grid-cols-2 gap-6">
-
-                <div>
-                  <p className="text-4xl font-bold text-blue-400">
-                    15K+
-                  </p>
-                  <p className="mt-1 text-sm text-white/80">
-                    Happy Customers
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-4xl font-bold text-blue-400">
-                    300+
-                  </p>
-                  <p className="mt-1 text-sm text-white/80">
-                    Digital Services
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="my-6 h-px bg-white/20" />
-
-              <div className="space-y-3">
-
-                <div className="flex items-center gap-3">
-
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-
-                  <span className="text-white">
-                    Government Authorized CSC
-                  </span>
-
-                </div>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-
-                  <span className="text-white">
-                    Secure Digital Services
-                  </span>
-
-                </div>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-
-                  <span className="text-white">
-                    Fast Processing
-                  </span>
-
-                </div>
-
-                <div className="flex items-center gap-3">
-
-                  <div className="h-3 w-3 rounded-full bg-green-500" />
-
-                  <span className="text-white">
-                    Expert Customer Support
-                  </span>
-
-                </div>
-
-              </div>
-
-              <button className="mt-6 w-full rounded-xl bg-blue-500 py-3 font-semibold text-white transition hover:bg-blue-600">
-                Visit CSC Center
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </section>
-  );
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+
+type Slide = {
+  id: string;
+  alt: string;
+  href: string;
+  cta: string;
 };
 
-export default HeroSection;
+// Banner images live in /public/banners (desktop: <id>.webp, phone: <id>-mobile.webp)
+const slides: Slide[] = [
+  {
+    id: "aadhaar-pan",
+    alt: "Aadhaar and PAN services at your Common Service Centre",
+    href: "#services",
+    cta: "View identity services",
+  },
+  {
+    id: "bills-recharge",
+    alt: "Pay electricity bills, recharge mobile and use banking services",
+    href: "#services",
+    cta: "View payment services",
+  },
+  {
+    id: "rail-insurance",
+    alt: "Train ticket booking and insurance cover",
+    href: "#services",
+    cta: "View travel and insurance",
+  },
+  {
+    id: "merge-tool",
+    alt: "Free tool to merge front and back of a card into one image under 100 KB",
+    href: "/mergeTwoImage",
+    cta: "Open the merge tool",
+  },
+];
+
+const AUTOPLAY_MS = 5500;
+
+export default function HeroSection() {
+  const [index, setIndex] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [hovering, setHovering] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const count = slides.length;
+
+  const go = useCallback((i: number) => setIndex(((i % count) + count) % count), [count]);
+  const next = useCallback(() => setIndex((i) => (i + 1) % count), [count]);
+  const prev = useCallback(() => setIndex((i) => (i - 1 + count) % count), [count]);
+
+  // Respect "reduce motion": start paused
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    if (!playing || hovering) return;
+    const t = setTimeout(next, AUTOPLAY_MS);
+    return () => clearTimeout(t);
+  }, [index, playing, hovering, next]);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(dx) > 45) (dx < 0 ? next : prev)();
+  };
+
+  const arrow =
+    "absolute top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-800 shadow-lg ring-1 ring-black/5 transition hover:bg-white hover:text-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 md:flex";
+
+  return (
+    <section id="home" className="bg-white pb-6 pt-24 sm:pt-28 md:pb-10">
+      <div className="mx-auto max-w-7xl px-3 sm:px-6">
+        <div
+          role="region"
+          aria-roledescription="carousel"
+          aria-label="Featured services"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") next();
+            if (e.key === "ArrowLeft") prev();
+          }}
+          onMouseEnter={() => setHovering(true)}
+          onMouseLeave={() => setHovering(false)}
+          onFocus={() => setHovering(true)}
+          onBlur={() => setHovering(false)}
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+          className="group relative overflow-hidden rounded-2xl bg-slate-100 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.35)] ring-1 ring-slate-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 md:rounded-3xl"
+        >
+          <div
+            className="flex transition-transform duration-700 ease-out motion-reduce:transition-none"
+            style={{ transform: `translateX(-${index * 100}%)` }}
+          >
+            {slides.map((s, i) => (
+              <div
+                key={s.id}
+                role="group"
+                aria-roledescription="slide"
+                aria-label={`${i + 1} of ${count}`}
+                aria-hidden={i !== index}
+                className="relative aspect-[5/6] w-full shrink-0 md:aspect-[16/7]"
+              >
+                <picture>
+                  <source media="(min-width: 768px)" srcSet={`/banners/${s.id}.webp`} />
+                  <img
+                    src={`/banners/${s.id}-mobile.webp`}
+                    alt={s.alt}
+                    width={1000}
+                    height={1200}
+                    loading={i === 0 ? "eager" : "lazy"}
+                    fetchPriority={i === 0 ? "high" : "auto"}
+                    draggable={false}
+                    className="h-full w-full select-none object-cover object-left"
+                  />
+                </picture>
+                <Link
+                  href={s.href}
+                  tabIndex={i === index ? 0 : -1}
+                  className="absolute inset-0"
+                  aria-label={s.cta}
+                />
+              </div>
+            ))}
+          </div>
+
+          <button type="button" onClick={prev} aria-label="Previous banner" className={`${arrow} left-4`}>
+            <ChevronLeft size={22} />
+          </button>
+          <button type="button" onClick={next} aria-label="Next banner" className={`${arrow} right-4`}>
+            <ChevronRight size={22} />
+          </button>
+
+          {/* Dots + play/pause */}
+          <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-slate-900/55 px-3 py-2 backdrop-blur">
+            <div className="flex items-center gap-2">
+              {slides.map((s, i) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => go(i)}
+                  aria-label={`Go to banner ${i + 1}`}
+                  aria-current={i === index}
+                  className={`h-2 rounded-full transition-all ${i === index ? "w-6 bg-white" : "w-2 bg-white/50 hover:bg-white/80"}`}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPlaying((p) => !p)}
+              aria-label={playing ? "Pause slideshow" : "Play slideshow"}
+              className="text-white/90 transition hover:text-white"
+            >
+              {playing ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

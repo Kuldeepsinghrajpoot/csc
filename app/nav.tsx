@@ -8,10 +8,12 @@ import {
   LinkIcon,
   BookOpen,
   ImagePlus,
+  ScanLine,
   Landmark,
 } from "lucide-react";
 
 import Link from "next/link"
+import Image from "next/image";
 
 import { usePathname } from "next/navigation";
 import MobileNavBar  from "./(mobile-navigation)/page";
@@ -25,6 +27,11 @@ export const navLinks = [
     name: "Merge Two Image",
     href: "/mergeTwoImage",
     icon: ImagePlus,
+  },
+  {
+    name: "Scan to PDF",
+    href: "/multiScan",
+    icon: ScanLine,
   },
   {
     name: "Passbook",
@@ -53,10 +60,7 @@ const Navbar = () => {
 
   return (
     <header
-      className={`fixed top-0 left-0 w-full z-50 transition-all duration-300  shadow-lg bg-white/90 backdrop-blur-md"${scrolled
-        ? "bg-white shadow-lg py-3"
-        : "bg-white/90 backdrop-blur-md py-5"
-        }`}
+      className={`fixed top-0 left-0 w-full z-50 border-b border-slate-200/70 bg-white/90 backdrop-blur-md transition-all duration-300 ${scrolled ? "py-3 shadow-sm" : "py-5"}`}
     >
       <div className="max-w-7xl mx-auto px-6">
 
@@ -66,9 +70,14 @@ const Navbar = () => {
 
           <Link href={"/"} className="flex items-center gap-3">
 
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-              CSC
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Rajput Common Service Centre logo"
+              width={56}
+              height={56}
+              priority
+              className="h-12 w-12 shrink-0 rounded-full sm:h-14 sm:w-14"
+            />
 
             <div>
 
@@ -86,7 +95,7 @@ const Navbar = () => {
 
           {/* Desktop Menu */}
 
-          <nav className="hidden lg:flex items-center gap-8">
+          <nav className="hidden lg:flex items-center gap-1">
 
             {navLinks.map((item) => {
               const Icon = item.icon;

@@ -124,3 +124,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Smooth scrolling (offset for the fixed navbar) */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 90px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

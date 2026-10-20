@@ -1,6 +1,11 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { enhanceScan, detectDocumentBox, ScanMode } from "@/lib/docScan";
+
+type Cut = { top: number; bottom: number; left: number; right: number };
+const emptyCut: Cut = { top: 0, bottom: 0, left: 0, right: 0 };
+const cutClip = (c: Cut) => `inset(${c.top}% ${c.right}% ${c.bottom}% ${c.left}%)`;
 import {
     Upload,
     Trash2,
@@ -18,6 +23,7 @@ import {
     X,
     Check,
     Eye,
+    ArrowLeftRight,
 } from "lucide-react";
 
 export default function MergeTwoImage() {
@@ -37,10 +43,12 @@ export default function MergeTwoImage() {
     const [layoutDirection, setLayoutDirection] = useState<
         "vertical" | "horizontal"
     >("vertical");
+    const [scanMode, setScanMode] = useState<ScanMode>("color"); // document-scan look
+    const [cardFit, setCardFit] = useState<boolean>(true); // standard Aadhaar card size
     const [paperSize, setPaperSize] = useState<"a4" | "fit">("fit"); // Default to tight fit for a cleaner look
     const [backgroundColor, setBackgroundColor] = useState<string>("#ffffff");
-    const [paddingSize, setPaddingSize] = useState<number>(30);
-    const [gapSize, setGapSize] = useState<number>(20);
+    const [paddingSize, setPaddingSize] = useState<number>(0);
+    const [gapSize, setGapSize] = useState<number>(10);
 
     const [mergedImage, setMergedImage] = useState<string | null>(null);
     const [mergedSizeKb, setMergedSizeKb] = useState<number | null>(null);
@@ -61,7 +69,15 @@ export default function MergeTwoImage() {
         null,
     );
 
+    
+    // Direct cut controls (live on the image) + auto-cut
+    const [frontCut, setFrontCut] = useState<Cut>(emptyCut);
+    const [backCut, setBackCut] = useState<Cut>(emptyCut);
+    const [showCut, setShowCut] = useState<{ front: boolean; back: boolean }>({ front: false, back: false });
+    const [autoCutOnUpload, setAutoCutOnUpload] = useState<boolean>(true);
+
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const skipAutoCut = useRef(false);
     const frontInputRef = useRef<HTMLInputElement | null>(null);
     const backInputRef = useRef<HTMLInputElement | null>(null);
     const modalPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -84,41 +100,56 @@ export default function MergeTwoImage() {
         return parseFloat((sizeInBytes / 1024).toFixed(2));
     };
 
-    // Process File upload to base64 DataURI
+    const readFile = (file: File) =>
+        new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+        });
+
+    const setSideImage = (side: "front" | "back", dataUri: string, name: string) => {
+        if (side === "front") {
+            setFrontImage(dataUri);
+            setOriginalFrontImage(dataUri);
+            setFrontFileName(name);
+            setFrontCut(emptyCut);
+        } else {
+            setBackImage(dataUri);
+            setOriginalBackImage(dataUri);
+            setBackFileName(name);
+            setBackCut(emptyCut);
+        }
+        setMergedImage(null); // Force regenerate requirement
+        setMergedSizeKb(null);
+    };
+
+    // Takes one or two files. One file -> the slot it was dropped on.
+    // Two files at once -> first one becomes Front, second one Back (same order as chosen).
+    const acceptFiles = async (files: File[], side: "front" | "back") => {
+        const images = files.filter((f) => f.type.startsWith("image/"));
+        if (images.length === 0) {
+            triggerToast("Please upload a valid image file (PNG/JPEG).", "error");
+            return;
+        }
+        if (images.length >= 2) {
+            const [a, b] = await Promise.all([readFile(images[0]), readFile(images[1])]);
+            setSideImage("front", a, images[0].name);
+            setSideImage("back", b, images[1].name);
+            triggerToast("Both sides added in the order you picked.");
+            return;
+        }
+        const uri = await readFile(images[0]);
+        setSideImage(side, uri, images[0].name);
+        triggerToast(`${side === "front" ? "Front" : "Back"} side added.`);
+    };
+
     const handleImageUpload = (
         e: React.ChangeEvent<HTMLInputElement>,
         side: "front" | "back",
     ) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (!file.type.startsWith("image/")) {
-            triggerToast(
-                "Please upload a valid image file (PNG/JPEG).",
-                "error",
-            );
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const dataUri = reader.result as string;
-            if (side === "front") {
-                setFrontImage(dataUri);
-                setOriginalFrontImage(dataUri);
-                setFrontFileName(file.name);
-            } else {
-                setBackImage(dataUri);
-                setOriginalBackImage(dataUri);
-                setBackFileName(file.name);
-            }
-            setMergedImage(null); // Force regenerate requirement
-            setMergedSizeKb(null);
-            triggerToast(
-                `${side === "front" ? "Front" : "Back"} side uploaded successfully!`,
-            );
-        };
-        reader.readAsDataURL(file);
+        const files = Array.from(e.target.files ?? []);
+        e.target.value = ""; // allow picking the same file again
+        if (files.length) acceptFiles(files, side);
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -127,71 +158,179 @@ export default function MergeTwoImage() {
 
     const handleDrop = (e: React.DragEvent, side: "front" | "back") => {
         e.preventDefault();
-        const file = e.dataTransfer.files?.[0];
-        if (!file) return;
-
-        if (!file.type.startsWith("image/")) {
-            triggerToast("Only image files are supported.", "error");
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const dataUri = reader.result as string;
-            if (side === "front") {
-                setFrontImage(dataUri);
-                setOriginalFrontImage(dataUri);
-                setFrontFileName(file.name);
-            } else {
-                setBackImage(dataUri);
-                setOriginalBackImage(dataUri);
-                setBackFileName(file.name);
-            }
-            setMergedImage(null);
-            setMergedSizeKb(null);
-            triggerToast(
-                `${side === "front" ? "Front" : "Back"} side dropped successfully!`,
-            );
-        };
-        reader.readAsDataURL(file);
+        const files = Array.from(e.dataTransfer.files ?? []);
+        if (files.length) acceptFiles(files, side);
     };
 
     // Paste handler for local clipboard contents
     const handlePaste = (e: React.ClipboardEvent, side: "front" | "back") => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
+        const items = Array.from(e.clipboardData?.items ?? []);
+        const item = items.find((it) => it.type.startsWith("image"));
+        const file = item?.getAsFile();
+        if (file) acceptFiles([file], side);
+    };
 
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf("image") !== -1) {
-                const file = items[i].getAsFile();
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        const dataUri = reader.result as string;
-                        if (side === "front") {
-                            setFrontImage(dataUri);
-                            setOriginalFrontImage(dataUri);
-                            setFrontFileName(
-                                `pasted_front_${new Date().getTime()}.png`,
-                            );
-                        } else {
-                            setBackImage(dataUri);
-                            setOriginalBackImage(dataUri);
-                            setBackFileName(
-                                `pasted_back_${new Date().getTime()}.png`,
-                            );
-                        }
-                        setMergedImage(null);
-                        setMergedSizeKb(null);
-                        triggerToast(
-                            `${side === "front" ? "Front" : "Back"} side pasted successfully!`,
-                        );
-                    };
-                    reader.readAsDataURL(file);
-                }
-                break;
+    // Swap which photo is first / second (left<->right or top<->bottom)
+    const swapSides = () => {
+        skipAutoCut.current = true; // do not re-run auto-cut and lose manual cuts
+        const f = frontImage, b = backImage;
+        const fo = originalFrontImage, bo = originalBackImage;
+        const fn = frontFileName, bn = backFileName;
+        const fc = frontCut, bc = backCut;
+        setFrontImage(b); setBackImage(f);
+        setOriginalFrontImage(bo); setOriginalBackImage(fo);
+        setFrontFileName(bn); setBackFileName(fn);
+        setFrontCut(bc); setBackCut(fc);
+        setMergedImage(null);
+        setMergedSizeKb(null);
+    };
+
+    // ---- AUTO-CUT: finds the card in the photo and cuts the background away ----
+    const autoCutFromOriginal = (side: "front" | "back", notify: boolean) => {
+        const src = side === "front" ? originalFrontImage : originalBackImage;
+        if (!src) return;
+        const img = new Image();
+        img.onload = () => {
+            const box = detectDocumentBox(img);
+            if (!box) {
+                if (notify) triggerToast("Card edges are not clear. Use Manual cut.", "error");
+                return;
             }
-        }
+            const c = document.createElement("canvas");
+            c.width = Math.round(box.w);
+            c.height = Math.round(box.h);
+            const ctx = c.getContext("2d");
+            if (!ctx) return;
+            ctx.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
+            const url = c.toDataURL("image/jpeg", 0.95);
+            if (side === "front") {
+                setFrontImage(url);
+                setFrontCut(emptyCut);
+            } else {
+                setBackImage(url);
+                setBackCut(emptyCut);
+            }
+            setMergedImage(null);
+            setMergedSizeKb(null);
+            if (notify) triggerToast("Card cut automatically.");
+        };
+        img.src = src;
+    };
+
+    // Auto-cut right after a new photo is uploaded
+    useEffect(() => {
+        if (autoCutOnUpload && originalFrontImage && !skipAutoCut.current) autoCutFromOriginal("front", false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [originalFrontImage]);
+    useEffect(() => {
+        if (autoCutOnUpload && originalBackImage && !skipAutoCut.current) autoCutFromOriginal("back", false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [originalBackImage]);
+    useEffect(() => {
+        skipAutoCut.current = false;
+    }, [originalFrontImage, originalBackImage]);
+
+    // ---- MANUAL CUT: applies the slider margins directly to the image ----
+    const applyCut = (side: "front" | "back") => {
+        const src = side === "front" ? frontImage : backImage;
+        const cut = side === "front" ? frontCut : backCut;
+        if (!src) return;
+        const img = new Image();
+        img.onload = () => {
+            const x = (img.width * cut.left) / 100;
+            const y = (img.height * cut.top) / 100;
+            const w = img.width * (1 - (cut.left + cut.right) / 100);
+            const h = img.height * (1 - (cut.top + cut.bottom) / 100);
+            if (w < 20 || h < 20) {
+                triggerToast("Cut is too large.", "error");
+                return;
+            }
+            const c = document.createElement("canvas");
+            c.width = Math.round(w);
+            c.height = Math.round(h);
+            const ctx = c.getContext("2d");
+            if (!ctx) return;
+            ctx.drawImage(img, x, y, w, h, 0, 0, c.width, c.height);
+            const url = c.toDataURL("image/jpeg", 0.95);
+            if (side === "front") {
+                setFrontImage(url);
+                setFrontCut(emptyCut);
+            } else {
+                setBackImage(url);
+                setBackCut(emptyCut);
+            }
+            setMergedImage(null);
+            setMergedSizeKb(null);
+            triggerToast("Cut applied.");
+        };
+        img.src = src;
+    };
+
+    const renderCutPanel = (side: "front" | "back") => {
+        const cut = side === "front" ? frontCut : backCut;
+        const setCut = side === "front" ? setFrontCut : setBackCut;
+        const open = showCut[side];
+        const hasCut = cut.top + cut.bottom + cut.left + cut.right > 0;
+        const sliders: [keyof Cut, string][] = [
+            ["top", "Top"],
+            ["bottom", "Bottom"],
+            ["left", "Left"],
+            ["right", "Right"],
+        ];
+        return (
+            <div className="mt-2">
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setShowCut((s) => ({ ...s, [side]: !s[side] }))}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 transition hover:text-blue-600"
+                    >
+                        <Crop className="h-3.5 w-3.5" /> {open ? "Hide edge sliders" : "Fine-tune edges"}
+                    </button>
+                </div>
+
+                {open && (
+                    <div className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                            Crop edges margin percent (%)
+                        </p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                            {sliders.map(([key, label]) => (
+                                <label key={key} className="block text-xs font-bold text-slate-600">
+                                    {label} Edge: {cut[key]}%
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={45}
+                                        step={0.5}
+                                        value={cut[key]}
+                                        onChange={(e) => setCut({ ...cut, [key]: parseFloat(e.target.value) })}
+                                        className="mt-1 w-full accent-blue-600"
+                                    />
+                                </label>
+                            ))}
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => applyCut(side)}
+                                disabled={!hasCut}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                                <Check className="h-3.5 w-3.5" /> Apply cut
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCut(emptyCut)}
+                                className="rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-300 hover:bg-slate-100"
+                            >
+                                Reset
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     // Opens visual Manual Crop Modal
@@ -430,7 +569,7 @@ export default function MergeTwoImage() {
     };
 
     // Generates combined document with compression safeguard to stay below 100KB
-    const generateMergedDocument = () => {
+    const generateMergedDocument = async () => {
         if (!frontImage || !backImage) {
             triggerToast(
                 "Please provide both front and back images first.",
@@ -440,12 +579,21 @@ export default function MergeTwoImage() {
         }
         setIsMerging(true);
 
+        let frontSrc = frontImage;
+        let backSrc = backImage;
+        try {
+            frontSrc = await enhanceScan(frontImage, scanMode, { cardFit });
+            backSrc = await enhanceScan(backImage, scanMode, { cardFit });
+        } catch {
+            triggerToast("Scan effect failed, using original photos.", "error");
+        }
+
         const imgFront = new Image();
         const imgBack = new Image();
 
-        imgFront.src = frontImage;
+        imgFront.src = frontSrc;
         imgFront.onload = () => {
-            imgBack.src = backImage;
+            imgBack.src = backSrc;
             imgBack.onload = () => {
                 const canvas = canvasRef.current;
                 if (!canvas) {
@@ -474,7 +622,7 @@ export default function MergeTwoImage() {
                     let canvasWidth = 900;
                     let canvasHeight = 1272;
 
-                    if (paperSize === "a4") {
+                    if (paperSize === "a4" && !cardFit) {
                         canvasWidth = Math.round(targetImageWidth * 1.25);
                         canvasHeight = Math.round(canvasWidth * 1.414);
                     } else {
@@ -624,14 +772,130 @@ export default function MergeTwoImage() {
         triggerToast("Download triggered successfully!");
     };
 
+    const isHorizontal = layoutDirection === "horizontal";
+    const posLabel = (n: 1 | 2) =>
+        isHorizontal ? (n === 1 ? "Left" : "Right") : n === 1 ? "Top" : "Bottom";
+
+    const card = "rounded-2xl bg-white ring-1 ring-slate-200/80 shadow-[0_1px_2px_rgba(15,23,42,0.04)]";
+    const stepNum = "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white";
+
+    const renderSlot = (side: "front" | "back", n: 1 | 2) => {
+        const row = !isHorizontal; // stacked layout -> compact row per photo
+        const image = side === "front" ? frontImage : backImage;
+        const name = side === "front" ? frontFileName : backFileName;
+        const original = side === "front" ? originalFrontImage : originalBackImage;
+        const cut = side === "front" ? frontCut : backCut;
+        const inputRef = side === "front" ? frontInputRef : backInputRef;
+        const title = side === "front" ? "Front side" : "Back side";
+        const toolBtn =
+            "inline-flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-blue-700";
+
+        return (
+            <div className="min-w-0">
+                <div className="mb-2 flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{n}</span>
+                    <span className="text-sm font-bold text-slate-800">{title}</span>
+                    <span className={`rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ${row ? "" : "ml-auto"}`}>
+                        {posLabel(n)}
+                    </span>
+                </div>
+
+                {image ? (
+                    <div className={row ? "flex flex-col gap-3 sm:flex-row sm:items-start" : ""}>
+                        <div className={row ? "sm:w-64 sm:shrink-0" : ""}>
+                            <div className="flex aspect-[85.6/54] items-center justify-center overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200">
+                                <img
+                                    src={image}
+                                    alt={`${title} preview`}
+                                    className="max-h-full max-w-full object-contain transition-[clip-path]"
+                                    style={{ clipPath: cutClip(cut) }}
+                                />
+                            </div>
+                            <p className="mt-1.5 truncate text-[11px] font-medium text-slate-400">{name}</p>
+                        </div>
+                        <div className={row ? "min-w-0 flex-1" : "mt-2"}>
+                            <div className="flex flex-wrap gap-1.5">
+                                <button type="button" onClick={() => autoCutFromOriginal(side, true)} className={toolBtn}>
+                                    <Scissors className="h-3.5 w-3.5" /> Auto-cut
+                                </button>
+                                <button type="button" onClick={() => openManualCropModal(side)} className={toolBtn}>
+                                    <Crop className="h-3.5 w-3.5" /> Crop
+                                </button>
+                                <button type="button" onClick={() => inputRef.current?.click()} title="Replace photo" aria-label="Replace photo" className={toolBtn}>
+                                    <RefreshCw className="h-3.5 w-3.5" />
+                                </button>
+                                {original !== image && (
+                                    <button type="button" onClick={() => handleUndoCrop(side)} title="Restore original photo" aria-label="Restore original photo" className={toolBtn}>
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => clearImage(side)}
+                                    title="Remove photo"
+                                    aria-label="Remove photo"
+                                    className="inline-flex items-center rounded-lg bg-white px-2.5 py-1.5 text-rose-600 ring-1 ring-slate-200 transition hover:bg-rose-50"
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                            {renderCutPanel(side)}
+                        </div>
+                    </div>
+                ) : (
+                    <div
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, side)}
+                        onPaste={(e) => handlePaste(e, side)}
+                        tabIndex={0}
+                        role="button"
+                        onClick={() => inputRef.current?.click()}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+                        }}
+                        className={`group flex ${row ? "h-28 w-full" : "aspect-[85.6/54]"} cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-center outline-none transition hover:border-blue-400 hover:bg-blue-50/50 focus:border-blue-500 focus:ring-4 focus:ring-blue-100`}
+                    >
+                        <span className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-white text-blue-600 ring-1 ring-slate-200 transition group-hover:bg-blue-600 group-hover:text-white">
+                            <Upload className="h-5 w-5" />
+                        </span>
+                        <p className="text-sm font-bold text-slate-800">Add {title.toLowerCase()}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Tap to choose, drop, or paste</p>
+                    </div>
+                )}
+                <input
+                    type="file"
+                    ref={inputRef}
+                    onChange={(e) => handleImageUpload(e, side)}
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                />
+            </div>
+        );
+    };
+
+    const swapBtn = (
+        <button
+            type="button"
+            onClick={swapSides}
+            disabled={!frontImage && !backImage}
+            title="Swap order"
+            className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-full bg-white text-slate-600 ring-1 ring-slate-300 transition hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+            <ArrowLeftRight className={`h-4 w-4 ${isHorizontal ? "" : "rotate-90"}`} />
+            <span className="sr-only">Swap order</span>
+        </button>
+    );
+
     return (
-        <div className="min-h-screen bg-slate-50/50 text-slate-900 selection:bg-blue-500 selection:text-white transition-all py-8">
-            {/* Toast Notification element */}
+        <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-blue-600 selection:text-white">
+            {/* Toast */}
             {feedbackMsg && (
-                <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded shadow-xl text-sm font-semibold animate-bounce border bg-white text-slate-800 border-slate-200">
-                    <span
-                        className={`w-2.5 h-2.5 rounded-full ${feedbackMsg.type === "success" ? "bg-emerald-500" : "bg-rose-500"}`}
-                    />
+                <div
+                    role="status"
+                    className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2.5 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-xl"
+                >
+                    <span className={`h-2 w-2 rounded-full ${feedbackMsg.type === "success" ? "bg-emerald-400" : "bg-rose-400"}`} />
                     {feedbackMsg.text}
                 </div>
             )}
@@ -677,7 +941,7 @@ export default function MergeTwoImage() {
 
                                         {/* Visual crop box overlays simulating shroud */}
                                         <div
-                                            className="absolute bg-black/65 border-b border-dashed border-indigo-400/80"
+                                            className="absolute bg-black/65 border-b border-dashed border-blue-400/80"
                                             style={{
                                                 top: 0,
                                                 left: 0,
@@ -686,7 +950,7 @@ export default function MergeTwoImage() {
                                             }}
                                         />
                                         <div
-                                            className="absolute bg-black/65 border-t border-dashed border-indigo-400/80"
+                                            className="absolute bg-black/65 border-t border-dashed border-blue-400/80"
                                             style={{
                                                 bottom: 0,
                                                 left: 0,
@@ -695,7 +959,7 @@ export default function MergeTwoImage() {
                                             }}
                                         />
                                         <div
-                                            className="absolute bg-black/65 border-r border-dashed border-indigo-400/80"
+                                            className="absolute bg-black/65 border-r border-dashed border-blue-400/80"
                                             style={{
                                                 top: `${cropTop}%`,
                                                 bottom: `${cropBottom}%`,
@@ -704,7 +968,7 @@ export default function MergeTwoImage() {
                                             }}
                                         />
                                         <div
-                                            className="absolute bg-black/65 border-l border-dashed border-indigo-400/80"
+                                            className="absolute bg-black/65 border-l border-dashed border-blue-400/80"
                                             style={{
                                                 top: `${cropTop}%`,
                                                 bottom: `${cropBottom}%`,
@@ -715,7 +979,7 @@ export default function MergeTwoImage() {
 
                                         {/* Bright crop focal window border */}
                                         <div
-                                            className="absolute border-2 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.5)] pointer-events-none"
+                                            className="absolute border-2 border-blue-500 shadow-[0_0_15px_rgba(99,102,241,0.5)] pointer-events-none"
                                             style={{
                                                 top: `${cropTop}%`,
                                                 bottom: `${cropBottom}%`,
@@ -730,7 +994,7 @@ export default function MergeTwoImage() {
                             {/* Right Side: LIVE RESULT PREVIEW (Ensures no blind crop) */}
                             <div className="flex flex-col gap-3">
                                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                                    <Eye className="w-4 h-4 text-emerald-600" />
+                                    <Eye className="w-4 h-4 text-blue-600" />
                                     Live Crop Result Preview
                                 </span>
                                 <div className="bg-slate-100 rounded p-4 flex flex-col items-center justify-center min-h-[260px] border border-slate-200">
@@ -741,7 +1005,7 @@ export default function MergeTwoImage() {
                                                 alt="Live crop preview output"
                                                 className="max-w-full max-h-[220px] object-contain rounded shadow-lg border border-white"
                                             />
-                                            <span className="text-[10px] font-semibold text-emerald-600 mt-2 bg-emerald-50 px-2 py-0.5 rounded-md">
+                                            <span className="text-[10px] font-semibold text-blue-600 mt-2 bg-blue-50 px-2 py-0.5 rounded-md">
                                                 Clean Edge Alignment Guaranteed
                                             </span>
                                         </div>
@@ -777,7 +1041,7 @@ export default function MergeTwoImage() {
                                             if (val + cropBottom < 100)
                                                 setCropTop(val);
                                         }}
-                                        className="w-full accent-indigo-600 h-1.5 rounded-md bg-slate-200"
+                                        className="w-full accent-blue-600 h-1.5 rounded-md bg-slate-200"
                                     />
                                 </div>
                                 <div>
@@ -796,7 +1060,7 @@ export default function MergeTwoImage() {
                                             if (val + cropTop < 100)
                                                 setCropBottom(val);
                                         }}
-                                        className="w-full accent-indigo-600 h-1.5 rounded-md bg-slate-200"
+                                        className="w-full accent-blue-600 h-1.5 rounded-md bg-slate-200"
                                     />
                                 </div>
                                 <div>
@@ -815,7 +1079,7 @@ export default function MergeTwoImage() {
                                             if (val + cropRight < 100)
                                                 setCropLeft(val);
                                         }}
-                                        className="w-full accent-indigo-600 h-1.5 rounded-md bg-slate-200"
+                                        className="w-full accent-blue-600 h-1.5 rounded-md bg-slate-200"
                                     />
                                 </div>
                                 <div>
@@ -834,7 +1098,7 @@ export default function MergeTwoImage() {
                                             if (val + cropLeft < 100)
                                                 setCropRight(val);
                                         }}
-                                        className="w-full accent-indigo-600 h-1.5 rounded-md bg-slate-200"
+                                        className="w-full accent-blue-600 h-1.5 rounded-md bg-slate-200"
                                     />
                                 </div>
                             </div>
@@ -850,7 +1114,7 @@ export default function MergeTwoImage() {
                             </button>
                             <button
                                 onClick={applyManualCrop}
-                                className="px-5 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded transition-all flex items-center gap-2 shadow shadow-indigo-100"
+                                className="px-5 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded transition-all flex items-center gap-2 shadow shadow-blue-100"
                             >
                                 <Check className="w-4 h-4" />
                                 Apply Precise Crop
@@ -860,534 +1124,280 @@ export default function MergeTwoImage() {
                 </div>
             )}
 
-            {/* Main body split content area */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                    {/* Left panel: Upload controls and Layout options (5 columns) */}
-                    <div className="lg:col-span-5 space-y-6">
-                        {/* Upload Area Component */}
-                        <div className="bg-white rounded border border-slate-200/80 p-6">
-                            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
-                                <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                                    <Upload className="w-5 h-5 text-blue-600" />
-                                    1. Upload & Clean Card Images
-                                </h2>
-                                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
-                                    Step 1 of 2
-                                </span>
+            <main className="mx-auto max-w-6xl px-4 pb-20 pt-28 sm:px-6 lg:px-8">
+                <header className="mb-8 max-w-2xl">
+                    <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-blue-700">
+                        <Layers className="h-4 w-4" /> Card merge tool
+                    </span>
+                    <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+                        Front and back, one clean scan
+                    </h1>
+                    <p className="mt-2 text-slate-600">
+                        Add both sides, pick how they sit on the page, and download a single scanned image under 100 KB.
+                        The merged page keeps the same order you see below.
+                    </p>
+                </header>
+
+                <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+                    {/* LEFT: setup */}
+                    <div className="space-y-6">
+                        {/* 1. Photos + layout */}
+                        <section className={`${card} p-5 sm:p-6`}>
+                            <div className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                                <div className="flex items-center gap-3">
+                                    <span className={stepNum}>1</span>
+                                    <h2 className="font-bold text-slate-900">Add the photos</h2>
+                                </div>
+                                <div role="group" aria-label="Layout" className="inline-flex rounded-xl bg-slate-100 p-1">
+                                    {([
+                                        ["horizontal", "Left → Right", "Side by side"],
+                                        ["vertical", "Top → Bottom", "Stacked"],
+                                    ] as ["horizontal" | "vertical", string, string][]).map(([value, title]) => {
+                                        const active = layoutDirection === value;
+                                        return (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                aria-pressed={active}
+                                                onClick={() => {
+                                                    setLayoutDirection(value);
+                                                    setMergedImage(null);
+                                                }}
+                                                className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+                                                    active ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-800"
+                                                }`}
+                                            >
+                                                <span className={`flex gap-0.5 ${value === "vertical" ? "flex-col" : ""}`}>
+                                                    <span className={`block rounded-[2px] ${value === "vertical" ? "h-1.5 w-4" : "h-3 w-2.5"} ${active ? "bg-blue-600" : "bg-slate-400"}`} />
+                                                    <span className={`block rounded-[2px] ${value === "vertical" ? "h-1.5 w-4" : "h-3 w-2.5"} ${active ? "bg-blue-300" : "bg-slate-300"}`} />
+                                                </span>
+                                                {title}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
-                            <div className="space-y-4">
-                                {/* FRONT SIDE CARD */}
-                                <div>
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                                        Front Side
-                                    </span>
-                                    {frontImage ? (
-                                        <div className="relative border border-slate-200 rounded overflow-hidden group bg-slate-50 p-2">
-                                            <img
-                                                src={frontImage}
-                                                className="w-full h-36 object-contain rounded-md"
-                                                alt="Front Preview"
-                                            />
-                                            <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 px-4">
-                                                <div className="flex items-center justify-center gap-2 w-full">
-                                                    <button
-                                                        onClick={() =>
-                                                            handleAutoCropAndRemoveBg(
-                                                                "front",
-                                                            )
-                                                        }
-                                                        title="Auto Detect Object & Crop Background Safely"
-                                                        className="bg-blue-500 hover:bg-blue-600 text-white px-2.5 py-1.5 rounded-md text-[11px] font-bold shadow flex items-center gap-1.5 flex-1 justify-center"
-                                                    >
-                                                        <Scissors className="w-3.5 h-3.5" />
-                                                        Auto-Crop
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            openManualCropModal(
-                                                                "front",
-                                                            )
-                                                        }
-                                                        title="Manually adjust image boundaries with preview"
-                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-md text-[11px] font-bold shadow flex items-center gap-1.5 flex-1 justify-center"
-                                                    >
-                                                        <Crop className="w-3.5 h-3.5" />
-                                                        Manual Crop
-                                                    </button>
-                                                </div>
-                                                <div className="flex items-center justify-center gap-2 w-full">
-                                                    <button
-                                                        onClick={() =>
-                                                            frontInputRef.current?.click()
-                                                        }
-                                                        className="bg-white hover:bg-slate-100 text-slate-800 px-3 py-1.5 rounded-md text-xs font-semibold shadow flex items-center gap-1.5 flex-1 justify-center"
-                                                    >
-                                                        <RefreshCw className="w-3 h-3" />
-                                                        Replace
-                                                    </button>
-                                                    {originalFrontImage !==
-                                                        frontImage && (
-                                                        <button
-                                                            onClick={() =>
-                                                                handleUndoCrop(
-                                                                    "front",
-                                                                )
-                                                            }
-                                                            title="Restore Original Image"
-                                                            className="bg-slate-700 hover:bg-slate-800 text-white p-2 rounded-md text-xs font-semibold shadow"
-                                                        >
-                                                            <RotateCcw className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() =>
-                                                            clearImage("front")
-                                                        }
-                                                        className="bg-rose-600 hover:bg-rose-700 text-white p-2 rounded-md text-xs font-semibold shadow"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <p className="text-[11px] text-slate-500 truncate mt-2 px-1 font-medium">
-                                                {frontFileName}
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) =>
-                                                handleDrop(e, "front")
-                                            }
-                                            onPaste={(e) =>
-                                                handlePaste(e, "front")
-                                            }
-                                            tabIndex={0}
-                                            className="relative border-2 border-dashed border-slate-200 hover:border-blue-400 focus:border-blue-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-slate-50/50 hover:bg-blue-50/10 rounded p-6 transition-all flex flex-col items-center justify-center text-center group min-h-[160px]"
-                                        >
-                                            {/* Default State */}
-                                            <div className="flex flex-col items-center justify-center transition-all group-hover:opacity-0 group-hover:scale-95 duration-200">
-                                                <div className="p-3 bg-white rounded border shadow-sm mb-3">
-                                                    <Upload className="w-5 h-5 text-slate-400" />
-                                                </div>
-                                                <p className="text-sm font-bold text-slate-800">
-                                                    Front Side Slot
-                                                </p>
-                                                <p className="text-xs text-slate-400 mt-1">
-                                                    Hover here to choose files
-                                                </p>
-                                            </div>
+                            <div className={`flex gap-3 ${isHorizontal ? "flex-col sm:flex-row" : "flex-col"}`}>
+                                <div className={isHorizontal ? "sm:flex-1" : ""}>{renderSlot("front", 1)}</div>
+                                {swapBtn}
+                                <div className={isHorizontal ? "sm:flex-1" : ""}>{renderSlot("back", 2)}</div>
+                            </div>
 
-                                            {/* Hover Overlay Actions instead of clickable block */}
-                                            <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center gap-2 rounded p-4">
-                                                <button
-                                                    onClick={() =>
-                                                        frontInputRef.current?.click()
-                                                    }
-                                                    className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 px-4 rounded shadow w-full max-w-[180px] flex items-center justify-center gap-1.5"
-                                                >
-                                                    <Upload className="w-3.5 h-3.5" />
-                                                    Browse File
-                                                </button>
-                                                <p className="text-[10px] text-slate-300 font-semibold mt-1">
-                                                    Or click container & press{" "}
-                                                    <kbd className="bg-slate-800 px-1 py-0.5 rounded text-[9px] border border-slate-700 text-white font-mono">
-                                                        Ctrl+V
-                                                    </kbd>{" "}
-                                                    to paste
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
+                            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+                                <span>Tip: pick two files at once to fill front, then back.</span>
+                                <label className="flex items-center gap-2 font-semibold text-slate-600">
                                     <input
-                                        type="file"
-                                        ref={frontInputRef}
-                                        onChange={(e) =>
-                                            handleImageUpload(e, "front")
-                                        }
-                                        accept="image/*"
-                                        className="hidden"
+                                        type="checkbox"
+                                        checked={autoCutOnUpload}
+                                        onChange={(e) => setAutoCutOnUpload(e.target.checked)}
+                                        className="h-4 w-4 accent-blue-600"
                                     />
-                                </div>
+                                    Auto-cut after upload
+                                </label>
+                            </div>
+                        </section>
 
-                                {/* BACK SIDE CARD */}
-                                <div>
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                                        Back Side
-                                    </span>
-                                    {backImage ? (
-                                        <div className="relative border border-slate-200 rounded overflow-hidden group bg-slate-50 p-2">
-                                            <img
-                                                src={backImage}
-                                                className="w-full h-36 object-contain rounded-md"
-                                                alt="Back Preview"
-                                            />
-                                            <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 px-4">
-                                                <div className="flex items-center justify-center gap-2 w-full">
-                                                    <button
-                                                        onClick={() =>
-                                                            handleAutoCropAndRemoveBg(
-                                                                "back",
-                                                            )
-                                                        }
-                                                        title="Auto Detect Object & Crop Background Safely"
-                                                        className="bg-blue-500 hover:bg-blue-600 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow flex items-center gap-1.5 flex-1 justify-center"
-                                                    >
-                                                        <Scissors className="w-3.5 h-3.5" />
-                                                        Auto-Crop
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            openManualCropModal(
-                                                                "back",
-                                                            )
-                                                        }
-                                                        title="Manually adjust image boundaries with preview"
-                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-lg text-[11px] font-bold shadow flex items-center gap-1.5 flex-1 justify-center"
-                                                    >
-                                                        <Crop className="w-3.5 h-3.5" />
-                                                        Manual Crop
-                                                    </button>
-                                                </div>
-                                                <div className="flex items-center justify-center gap-2 w-full">
-                                                    <button
-                                                        onClick={() =>
-                                                            backInputRef.current?.click()
-                                                        }
-                                                        className="bg-white hover:bg-slate-100 text-slate-800 px-3 py-1.5 rounded-md text-xs font-semibold shadow flex items-center gap-1.5 flex-1 justify-center"
-                                                    >
-                                                        <RefreshCw className="w-3 h-3" />
-                                                        Replace
-                                                    </button>
-                                                    {originalBackImage !==
-                                                        backImage && (
-                                                        <button
-                                                            onClick={() =>
-                                                                handleUndoCrop(
-                                                                    "back",
-                                                                )
-                                                            }
-                                                            title="Restore Original Image"
-                                                            className="bg-slate-700 hover:bg-slate-800 text-white p-2 rounded-md text-xs font-semibold shadow"
-                                                        >
-                                                            <RotateCcw className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() =>
-                                                            clearImage("back")
-                                                        }
-                                                        className="bg-rose-600 hover:bg-rose-700 text-white p-2 rounded-md text-xs font-semibold shadow"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <p className="text-[11px] text-slate-500 truncate mt-2 px-1 font-medium">
-                                                {backFileName}
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            onDragOver={handleDragOver}
-                                            onDrop={(e) =>
-                                                handleDrop(e, "back")
-                                            }
-                                            onPaste={(e) =>
-                                                handlePaste(e, "back")
-                                            }
-                                            tabIndex={0}
-                                            className="relative border-2 border-dashed border-slate-200 hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-slate-50/50 hover:bg-blue-50/10 cursor-pointer rounded p-6 transition-all flex flex-col items-center justify-center text-center group min-h-[160px]"
-                                        >
-                                            {/* Default State */}
-                                            <div className="flex flex-col items-center justify-center transition-all group-hover:opacity-0 group-hover:scale-95 duration-200">
-                                                <div className="p-3 bg-white rounded border shadow-sm mb-3">
-                                                    <Upload className="w-5 h-5 text-slate-400" />
-                                                </div>
-                                                <p className="text-sm font-bold text-slate-800">
-                                                    Back Side Slot
-                                                </p>
-                                                <p className="text-xs text-slate-400 mt-1">
-                                                    Hover here to choose files
-                                                </p>
-                                            </div>
+                        {/* Scan style */}
+                        <section className={`${card} p-5 sm:p-6`}>
+                            <div className="mb-4 flex items-center gap-3">
+                                <span className={stepNum}>2</span>
+                                <h2 className="font-bold text-slate-900">Scan style</h2>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {([
+                                    ["color", "Colour"],
+                                    ["gray", "Grey"],
+                                    ["bw", "Black & white"],
+                                    ["original", "Original"],
+                                ] as [ScanMode, string][]).map(([mode, label]) => (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        aria-pressed={scanMode === mode}
+                                        onClick={() => {
+                                            setScanMode(mode);
+                                            setMergedImage(null);
+                                        }}
+                                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                            scanMode === mode
+                                                ? "bg-slate-900 text-white"
+                                                : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
 
-                                            {/* Hover Overlay Actions instead of clickable block */}
-                                            <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 transition-all duration-200 flex flex-col items-center justify-center gap-2 rounded p-4">
+                            <details className="group mt-5 border-t border-slate-100 pt-4">
+                                <summary className="flex cursor-pointer select-none list-none items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-700">
+                                    <Settings className="h-4 w-4" /> More options
+                                </summary>
+                                <div className="mt-4 space-y-5">
+                                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={cardFit}
+                                            onChange={(e) => {
+                                                setCardFit(e.target.checked);
+                                                setMergedImage(null);
+                                            }}
+                                            className="h-4 w-4 accent-blue-600"
+                                        />
+                                        Aadhaar card size (85.6 × 54 mm, both sides equal)
+                                    </label>
+
+                                    <div>
+                                        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Page format</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {([
+                                                ["fit", "Tight fit"],
+                                                ["a4", "A4 page"],
+                                            ] as ["fit" | "a4", string][]).map(([v, label]) => (
                                                 <button
-                                                    onClick={() =>
-                                                        backInputRef.current?.click()
-                                                    }
-                                                    className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 px-4 rounded-md shadow w-full max-w-[180px] flex items-center justify-center gap-1.5"
+                                                    key={v}
+                                                    type="button"
+                                                    aria-pressed={paperSize === v}
+                                                    onClick={() => {
+                                                        setPaperSize(v);
+                                                        setMergedImage(null);
+                                                    }}
+                                                    className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                                                        paperSize === v
+                                                            ? "bg-blue-600 text-white"
+                                                            : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                                    }`}
                                                 >
-                                                    <Upload className="w-3.5 h-3.5" />
-                                                    Browse File
+                                                    {label}
                                                 </button>
-                                                <p className="text-[10px] text-slate-300 font-semibold mt-1">
-                                                    Or click container & press{" "}
-                                                    <kbd className="bg-slate-800 px-1 py-0.5 rounded text-[9px] border border-slate-700 text-white font-mono">
-                                                        Ctrl+V
-                                                    </kbd>{" "}
-                                                    to paste
-                                                </p>
-                                            </div>
+                                            ))}
                                         </div>
-                                    )}
-                                    <input
-                                        type="file"
-                                        ref={backInputRef}
-                                        onChange={(e) =>
-                                            handleImageUpload(e, "back")
-                                        }
-                                        accept="image/*"
-                                        className="hidden"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Layout Customizer Component */}
-                        <div className="bg-white rounded border border-slate-200/80 p-6 ">
-                            <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
-                                <h2 className="font-bold text-slate-800 flex items-center gap-2">
-                                    <Settings className="w-5 h-5 text-blue-500" />
-                                    2. Page Customizer
-                                </h2>
-                                <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
-                                    Step 2 of 2
-                                </span>
-                            </div>
-
-                            <div className="space-y-4">
-                                {/* Vertical or Horizontal alignments */}
-                                <div>
-                                    <label className="text-xs font-bold text-slate-700 block mb-2">
-                                        Card Layout Alignment
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        <button
-                                            onClick={() => {
-                                                setLayoutDirection("vertical");
-                                                setMergedImage(null);
-                                            }}
-                                            className={`px-3 py-2.5 text-xs font-bold rounded border text-center transition-all ${layoutDirection === "vertical" ? "bg-slate-900 border-slate-900 text-white shadow-sm" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
-                                        >
-                                            Vertical (Top-Down)
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setLayoutDirection(
-                                                    "horizontal",
-                                                );
-                                                setMergedImage(null);
-                                            }}
-                                            className={`px-3 py-2.5 text-xs font-bold rounded border text-center transition-all ${layoutDirection === "horizontal" ? "bg-slate-900 border-slate-900 text-white shadow-sm" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
-                                        >
-                                            Horizontal (Side-by-Side)
-                                        </button>
                                     </div>
-                                </div>
 
-                                {/* Sizing selection */}
-                                <div>
-                                    <label className="text-xs font-bold text-slate-700 block mb-2">
-                                        Paper Aspect Format
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        <button
-                                            onClick={() => {
-                                                setPaperSize("a4");
-                                                setMergedImage(null);
-                                            }}
-                                            className={`px-3 py-2.5 text-xs font-bold rounded border text-center transition-all ${paperSize === "a4" ? "bg-blue-500 border-blue-500 text-white shadow-sm" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
-                                        >
-                                            Standard A4 Format
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setPaperSize("fit");
-                                                setMergedImage(null);
-                                            }}
-                                            className={`px-3 py-2.5 text-xs font-bold rounded border text-center transition-all ${paperSize === "fit" ? "bg-blue-500 border-blue-500 text-white shadow-sm" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
-                                        >
-                                            Tight Dynamic Fit
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Spacings (Gaps and Margins) */}
-                                <div className="grid grid-cols-2 gap-4 pt-2">
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700 block mb-1">
-                                            Margins ({paddingSize}px)
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <label className="block text-xs font-bold text-slate-600">
+                                            Margin: {paddingSize}px
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={100}
+                                                value={paddingSize}
+                                                onChange={(e) => {
+                                                    setPaddingSize(parseInt(e.target.value));
+                                                    setMergedImage(null);
+                                                }}
+                                                className="mt-1 w-full accent-blue-600"
+                                            />
                                         </label>
-                                        <input
-                                            type="range"
-                                            min="10"
-                                            max="100"
-                                            value={paddingSize}
-                                            onChange={(e) => {
-                                                setPaddingSize(
-                                                    parseInt(e.target.value),
-                                                );
-                                                setMergedImage(null);
-                                            }}
-                                            className="w-full h-1 bg-slate-200 rounded-md appearance-none cursor-pointer accent-blue-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700 block mb-1">
-                                            Gap Size ({gapSize}px)
+                                        <label className="block text-xs font-bold text-slate-600">
+                                            Gap: {gapSize}px
+                                            <input
+                                                type="range"
+                                                min={0}
+                                                max={100}
+                                                value={gapSize}
+                                                onChange={(e) => {
+                                                    setGapSize(parseInt(e.target.value));
+                                                    setMergedImage(null);
+                                                }}
+                                                className="mt-1 w-full accent-blue-600"
+                                            />
                                         </label>
-                                        <input
-                                            type="range"
-                                            min="10"
-                                            max="100"
-                                            value={gapSize}
-                                            onChange={(e) => {
-                                                setGapSize(
-                                                    parseInt(e.target.value),
-                                                );
-                                                setMergedImage(null);
-                                            }}
-                                            className="w-full h-1 bg-slate-200 rounded appearance-none cursor-pointer accent-indigo-600"
-                                        />
                                     </div>
-                                </div>
 
-                                {/* Document Canvas Color styling */}
-                                <div>
-                                    <label className="text-xs font-bold  block mb-1.5">
-                                        Canvas Paper Color
-                                    </label>
-                                    <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-3 text-xs font-bold text-slate-600">
+                                        Page colour
                                         <input
                                             type="color"
                                             value={backgroundColor}
                                             onChange={(e) => {
-                                                setBackgroundColor(
-                                                    e.target.value,
-                                                );
+                                                setBackgroundColor(e.target.value);
                                                 setMergedImage(null);
                                             }}
-                                            className="w-8 h-8 rounded cursor-pointer border "
+                                            className="h-8 w-10 cursor-pointer rounded border border-slate-200"
                                         />
-                                        <span className="text-xs font-mono font-semibold  uppercase">
-                                            {backgroundColor}
-                                        </span>
-                                    </div>
+                                        <span className="font-mono uppercase text-slate-500">{backgroundColor}</span>
+                                    </label>
                                 </div>
-                            </div>
-                        </div>
-
-                        {/* Main Action trigger */}
-                        <button
-                            disabled={!frontImage || !backImage || isMerging}
-                            onClick={generateMergedDocument}
-                            className={`w-full py-4 px-6 rounded font-bold shadow-lg transition-all flex items-center justify-center gap-2 text-white
-                ${
-                    !frontImage || !backImage
-                        ? "bg-slate-300 cursor-not-allowed shadow-none"
-                        : "bg-linear-to-r from-blue-500 to-blue-500 hover:from-blue-600 hover:to-blue-600 shadow-blue-200 hover:-translate-y-0.5"
-                }`}
-                        >
-                            {isMerging ? (
-                                <>
-                                    <RefreshCw className="w-5 h-5 animate-spin" />
-                                    Rendering & Compressing...
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles className="w-5 h-5" />
-                                    Compile & Limit under 100KB
-                                </>
-                            )}
-                        </button>
+                            </details>
+                        </section>
                     </div>
 
-                    {/* Right preview display viewport (7 columns) */}
-                    <div className="lg:col-span-7 ">
-                        <div className="bg-white rounded border border-slate-200  p-6 flex flex-col justify-between">
-                            {/* Output Action Header bar */}
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
-                                <div className="flex items-center gap-2">
-                                    <FileText className="w-5 h-5 text-blue-500" />
-                                    <h3 className="font-bold ">
-                                        Final Document Output
-                                    </h3>
-                                </div>
-
-                                {mergedImage && (
-                                    <button
-                                        onClick={downloadFinalDocument}
-                                        className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded shadow transition-all flex items-center gap-2 hover:-translate-y-0.5"
-                                    >
-                                        <Download className="w-4 h-4" />
-                                        Download ({mergedSizeKb} KB)
-                                    </button>
+                    {/* RIGHT: result */}
+                    <aside className="space-y-4 lg:sticky lg:top-24">
+                        <section className={`${card} p-5 sm:p-6`}>
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <h2 className="font-bold text-slate-900">Merged result</h2>
+                                {mergedSizeKb !== null && (
+                                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${mergedSizeKb <= 100 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                                        {mergedSizeKb} KB
+                                    </span>
                                 )}
                             </div>
 
-                            {/* Working output preview container */}
-                            <div className="flex-1 bg-slate-50 border border-slate-100 rounded-md p-6 flex flex-col items-center justify-center relative overflow-hidden">
+                            <div className="flex min-h-[260px] items-center justify-center rounded-xl bg-[repeating-conic-gradient(#eef1f6_0_25%,#f8fafc_0_50%)] bg-[length:16px_16px] p-4 ring-1 ring-slate-200">
                                 {mergedImage ? (
-                                    <div className="w-full max-w-md transition-all duration-300">
-                                        <img
-                                            src={mergedImage}
-                                            alt="Aadhaar Combined Compilation Preview"
-                                            className="w-full h-auto rounded  border border-slate-200/60 bg-white"
-                                        />
-
-                                        {/* File Size details label */}
-                                        <div className="mt-4 flex flex-col gap-2 items-center">
-                                            <div className="flex items-center gap-2 text-xs font-semibold bg-white py-2 px-4 rounded  border border-slate-100">
-                                                <Sliders className="w-3.5 h-3.5 text-blue-500" />
-                                                <span>
-                                                    File Size:{" "}
-                                                    <strong className="text-emerald-600">
-                                                        {mergedSizeKb} KB
-                                                    </strong>
-                                                </span>
-                                                <span className="text-slate-300">
-                                                    |
-                                                </span>
-                                                <span className="text-slate-500 font-medium">
-                                                    Status: Optimized under
-                                                    100KB
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium">
-                                                <Info className="w-3 h-3" />
-                                                Quality factor is auto-scaled
-                                                dynamically to keep final file
-                                                sizes below 100KB.
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <img
+                                        src={mergedImage}
+                                        alt="Merged front and back preview"
+                                        className="max-h-[560px] w-full object-contain bg-white shadow-[0_12px_30px_rgba(15,23,42,0.18)]"
+                                    />
                                 ) : (
-                                    <div className="text-center p-8 max-w-sm">
-                                        <div className="w-16 h-16 bg-white rounded flex items-center justify-center mx-auto mb-4 border border-slate-200">
-                                            <Layers className="w-8 h-8 text-slate-400" />
-                                        </div>
-                                        <h4 className="text-slate-800 font-bold mb-1.5">
-                                            No Preview Compiled
-                                        </h4>
-                                        <p className="text-xs text-slate-400 font-medium leading-relaxed">
-                                            Upload both identity card images on
-                                            the left side, configure margins,
-                                            then tap{" "}
-                                            <strong className="text-slate-600">
-                                                "Compile & Limit under 100KB"
-                                            </strong>{" "}
-                                            to generate the output page.
+                                    <div className="max-w-[16rem] p-4 text-center">
+                                        <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-400 ring-1 ring-slate-200">
+                                            <Layers className="h-6 w-6" />
+                                        </span>
+                                        <p className="text-sm font-bold text-slate-800">Nothing merged yet</p>
+                                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                                            Add both photos, then tap Merge. Your page shows here, {isHorizontal ? "front on the left" : "front on top"}.
                                         </p>
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    </div>
+
+                            {mergedImage && (
+                                <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                                    {scanMode !== "original" && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Scanned</span>}
+                                    {cardFit && <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Aadhaar size</span>}
+                                    {mergedSizeKb !== null && mergedSizeKb <= 100 && (
+                                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-700">Under 100 KB</span>
+                                    )}
+                                </div>
+                            )}
+
+                            <button
+                                type="button"
+                                disabled={!frontImage || !backImage || isMerging}
+                                onClick={generateMergedDocument}
+                                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-base font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                                {isMerging ? (
+                                    <>
+                                        <RefreshCw className="h-5 w-5 animate-spin" /> Working...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Sparkles className="h-5 w-5" /> Merge, scan &amp; compress
+                                    </>
+                                )}
+                            </button>
+
+                            {mergedImage && (
+                                <button
+                                    type="button"
+                                    onClick={downloadFinalDocument}
+                                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                                >
+                                    <Download className="h-4 w-4" /> Download JPG
+                                </button>
+                            )}
+
+                            <p className="mt-3 text-center text-xs text-slate-500">
+                                Your photos stay on your device. Nothing is uploaded.
+                            </p>
+                        </section>
+                    </aside>
                 </div>
             </main>
 

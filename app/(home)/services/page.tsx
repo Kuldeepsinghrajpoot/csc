@@ -101,7 +101,7 @@ const ServicesSection = () => {
 
         {/* Cards */}
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
 
           {services.map((service, index) => {
             const Icon = service.icon;
@@ -109,29 +109,34 @@ const ServicesSection = () => {
             return (
               <div
                 key={index}
-                className="bg-white rounded-sm p-8 shadow-sm hover:shadow-2xl transition duration-300 hover:-translate-y-3 group"
+                className="group relative flex flex-col rounded-3xl border border-slate-200 bg-white p-7 transition-all duration-300 hover:-translate-y-1.5 hover:border-blue-200 hover:shadow-[0_18px_40px_rgba(37,99,235,0.12)]"
               >
-
                 <div
-                  className={`w-16 h-16 rounded-2xl flex items-center justify-center ${service.color}`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-2xl ${service.color} transition-transform duration-300 group-hover:scale-110`}
                 >
-                  <Icon size={30} />
+                  <Icon size={26} />
                 </div>
 
-                <h3 className="text-2xl font-bold mt-8 text-slate-800 group-hover:text-blue-500 transition">
+                <h3 className="mt-6 text-xl font-bold text-slate-800 transition group-hover:text-blue-600">
                   {service.title}
                 </h3>
 
-                <p className="text-gray-600 mt-4 leading-7">
+                <p className="mt-3 flex-1 text-sm leading-7 text-slate-600">
                   {service.description}
                 </p>
 
-                <button className="mt-8 text-blue-500 font-semibold hover:gap-3 transition-all flex items-center gap-2">
-
-                  Learn More →
-
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target =
+                      document.getElementById("contact") ?? document.querySelector("form");
+                    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                  className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-600"
+                >
+                  Enquire now
+                  <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
                 </button>
-
               </div>
             );
           })}

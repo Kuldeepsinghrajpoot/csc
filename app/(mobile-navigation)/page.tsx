@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 
@@ -30,7 +31,16 @@ export default function MobileNavBar() {
 
       <SheetContent side="right">
         <SheetHeader>
-          <SheetTitle>Navigation</SheetTitle>
+          <SheetTitle className="flex items-center gap-3">
+            <Image
+              src="/logo.png"
+              alt="Rajput Common Service Centre logo"
+              width={40}
+              height={40}
+              className="h-10 w-10 rounded-full"
+            />
+            Navigation
+          </SheetTitle>
         </SheetHeader>
 
         <div className="mt-6 flex flex-col gap-2">
